@@ -51,3 +51,11 @@ class CausalGraphManager:
 
     def export(self):
         return nx.node_link_data(self.graph, edges="links")
+
+
+def find_minimal_fix(self, failure_node):
+    # Binary search over pelvis x: would shifting 1cm, 2cm, 3cm have prevented fall?
+    for delta in [0.01, 0.02, 0.03, 0.05]:
+        cf_state = self.do(pelvis_x=f"current+{delta}")
+        if not self.predicts_failure(cf_state):
+            return f"shift pelvis {delta*100:.0f}cm"
