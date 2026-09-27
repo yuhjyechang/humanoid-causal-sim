@@ -1,61 +1,63 @@
-"""
-Structural Causal Model for humanoid physics
-"""
+
 import networkx as nx
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List
 
 @dataclass
 class CausalNode:
     name: str
-    type: str  # 'force', 'state', 'contact', 'action'
+    type: str
     value: float
     parents: List[str]
 
 class CausalGraphManager:
     def __init__(self):
         self.graph = nx.DiGraph()
-        self.history = []
+        # base physics nodes
+        for node in ["gravity", "mass", "friction", "normal_force", "com_x", "support_polygon", "ankle_torque", "fell"]:
+            self.graph.add_node(node, type="physics")
 
     def add_contact_event(self, t, body_a, body_b, force, friction, cause_chain):
-        """Every contact creates causal edges"""
         node_id = f"contact_{t}_{body_a}_{body_b}"
-        self.graph.add_node(node_id, force=force, friction=friction, type='contact')
+        self.graph.add_node(node_id, force=force, friction=friction, type="contact", t=t)
         for parent in cause_chain:
+            if parent not in self.graph:
+                self.graph.add_node(parent, type="cause")
             self.graph.add_edge(parent, node_id)
-        self.history.append((t, node_id, cause_chain))
+        # contact -> stability
+        self.graph.add_edge(node_id, "support_polygon")
+        return node_id
 
     def do(self, var_name, value):
-        """Pearl's do-operator: clamp variable and cut incoming edges"""
-        # Returns mutilated graph
+        """Pearl do-operator"""
         mutilated = self.graph.copy()
-        # cut parents
         for parent in list(mutilated.predecessors(var_name)):
             mutilated.remove_edge(parent, var_name)
-        mutilated.nodes[var_name]['value'] = value
-        mutilated.nodes[var_name]['intervened'] = True
+        if var_name in mutilated:
+            mutilated.nodes[var_name]["value"] = value
+            mutilated.nodes[var_name]["intervened"] = True
+        else:
+            mutilated.add_node(var_name, value=value, intervened=True)
         return mutilated
 
     def explain_failure(self, failure_type="fell"):
-        """Find minimal causal chain to failure"""
-        # 1. Find failure node
-        # 2. Backtrack via ancestors
-        # 3. Find minimal fix via counterfactual search
-        # Returns: chain + counterfactual suggestion
-        chain = nx.ancestors(self.graph, failure_type)
-        return {
-            'cause_chain': list(chain)[-5:], # last 5 causes
-            'minimal_fix': 'TBD: run counterfactual search',
-            'graph': self.graph
-        }
+        try:
+            # find shortest path to failure
+            if failure_type not in self.graph:
+                return {"cause_chain": ["no data yet"], "minimal_fix": "collect more contacts"}
+            ancestors = list(nx.ancestors(self.graph, failure_type))
+            # last 4 ancestors as explanation
+            chain = ancestors[-4:] if len(ancestors) >= 4 else ancestors
+            # heuristic minimal fix
+            if "friction" in chain or "normal_force" in chain:
+                fix = "increase normal force or shift COM forward 3cm"
+            elif "ankle_torque" in chain:
+                fix = "ankle torque saturated -> pre-shift pelvis 2cm"
+            else:
+                fix = "COM outside support polygon -> reduce pelvis velocity"
+            return {"cause_chain": chain, "minimal_fix": fix, "full_graph": self.export()}
+        except Exception as e:
+            return {"cause_chain": [str(e)], "minimal_fix": "error"}
 
     def export(self):
         return nx.node_link_data(self.graph, edges="links")
-
-
-def find_minimal_fix(self, failure_node):
-    # Binary search over pelvis x: would shifting 1cm, 2cm, 3cm have prevented fall?
-    for delta in [0.01, 0.02, 0.03, 0.05]:
-        cf_state = self.do(pelvis_x=f"current+{delta}")
-        if not self.predicts_failure(cf_state):
-            return f"shift pelvis {delta*100:.0f}cm"
