@@ -1,27 +1,6 @@
-# Core physics
 genesis-world
 mujoco==3.2.7
-mujoco-mjx
 torch
-jax[cuda12]
-brax
-
-# Causal & learning
 networkx
-dowhy
 gymnasium
-rsl-rl
-stable-baselines3
-cleanrl
-
-# UE bridge & USD
 usd-core
-numpy
-opencv-python
-open3d
-
-# Utils
-hydra-core
-omegaconf
-wandb
-tqdm
